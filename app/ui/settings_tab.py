@@ -1,7 +1,7 @@
 from PyQt6.QtCore import Qt, QTime, pyqtSlot, QMetaObject, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QGroupBox, QTimeEdit, QMessageBox, QTextEdit
+    QPushButton, QTimeEdit, QMessageBox, QTextEdit, QFrame, QScrollArea
 )
 import threading
 import subprocess
@@ -11,7 +11,38 @@ from app.secure_token import save_token, load_token
 from app.wb_api import WBAPIClient, WBAPIError
 from app.scheduler import setup_scheduler, daily_sync_job
 
-# --- Поток для выполнения Git-команд без зависания интерфейса ---
+# --- Вспомогательный класс для красивой карточки ---
+class SettingsCard(QFrame):
+    def __init__(self, title: str):
+        super().__init__()
+        self.setObjectName("SettingsCard")
+        self.setStyleSheet("""
+            QFrame#SettingsCard {
+                background-color: #ffffff;
+                border: 1px solid #d0d7de;
+                border-radius: 8px;
+            }
+        """)
+        
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(15, 15, 15, 15)
+        self.layout.setSpacing(12)
+        
+        self.title_label = QLabel(title)
+        self.title_label.setStyleSheet("""
+            font-size: 14px; 
+            font-weight: bold; 
+            color: #1f2328;
+            border: none;
+            background: transparent;
+        """)
+        self.layout.addWidget(self.title_label)
+        
+        self.content_layout = QVBoxLayout()
+        self.content_layout.setSpacing(10)
+        self.layout.addLayout(self.content_layout)
+
+# --- Поток для выполнения Git-команд ---
 class GitSyncThread(QThread):
     finished = pyqtSignal(bool, str)
 
@@ -21,7 +52,6 @@ class GitSyncThread(QThread):
 
     def run(self):
         try:
-            # Скрываем черное окно консоли при выполнении команд
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             
@@ -45,19 +75,73 @@ class GitSyncThread(QThread):
 class SettingsTab(QWidget):
     def __init__(self):
         super().__init__()
-        layout = QVBoxLayout(self)
-        layout.setSpacing(15)
-
-        # --- Группа 1: API Токен ---
-        token_group = QGroupBox("Доступ к Wildberries API")
-        token_layout = QVBoxLayout(token_group)
         
-        input_layout = QHBoxLayout()
+        # Общие стили для кнопок и полей ввода
+        self.setStyleSheet("""
+            QLineEdit, QTimeEdit {
+                border: 1px solid #d0d7de;
+                border-radius: 4px;
+                padding: 6px 10px;
+                background: #ffffff;
+                color: #1f2328;
+                font-size: 13px;
+            }
+            QLineEdit:focus, QTimeEdit:focus {
+                border: 1px solid #0969da;
+            }
+            QPushButton {
+                background: #f6f8fa;
+                border: 1px solid #d0d7de;
+                border-radius: 4px;
+                padding: 6px 14px;
+                font-size: 13px;
+                font-weight: bold;
+                color: #1f2328;
+            }
+            QPushButton:hover {
+                background: #eaeef2;
+                border: 1px solid #0969da;
+            }
+            QPushButton:pressed {
+                background: #d0d7de;
+            }
+            QPushButton:disabled {
+                color: #8c959f;
+                background: #f6f8fa;
+            }
+            QTextEdit {
+                background-color: #f5f7fa;
+                border: 1px solid #d0d7de;
+                border-radius: 4px;
+                font-family: Consolas, monospace;
+                font-size: 11px;
+                color: #1f2328;
+                padding: 5px;
+            }
+        """)
+
+        # Основной скролл (на случай, если экран маленький)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
+        
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
+
+        # ================= КАРТОЧКА 1: API Токен =================
+        card_token = SettingsCard("Доступ к Wildberries API")
+        token_row = QHBoxLayout()
+        
         self.token_input = QLineEdit()
         self.token_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.token_input.setPlaceholderText("Вставьте токен...")
-        self.token_input.setMinimumWidth(250)
-        self.token_input.setMaximumWidth(350)
+        self.token_input.setFixedWidth(260)
         
         existing = load_token()
         if existing:
@@ -65,108 +149,156 @@ class SettingsTab(QWidget):
 
         self.save_btn = QPushButton("Сохранить")
         self.save_btn.clicked.connect(self.save_api_token)
+        self.save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1f883d; 
+                color: white; 
+                border: 1px solid #1a7f37;
+            }
+            QPushButton:hover { background-color: #1a7f37; }
+        """)
         
         self.check_btn = QPushButton("Проверить Ping")
         self.check_btn.clicked.connect(self.check_ping)
 
-        input_layout.addWidget(QLabel("API-токен:"))
-        input_layout.addWidget(self.token_input)
-        input_layout.addWidget(self.save_btn)
-        input_layout.addWidget(self.check_btn)
-        input_layout.addStretch()
+        token_row.addWidget(QLabel("API-токен:"))
+        token_row.addWidget(self.token_input)
+        token_row.addWidget(self.save_btn)
+        token_row.addWidget(self.check_btn)
+        token_row.addStretch()
         
-        token_layout.addLayout(input_layout)
-        layout.addWidget(token_group)
+        card_token.content_layout.addLayout(token_row)
+        layout.addWidget(card_token)
 
-        # --- Группа 2: Автосинхронизация ---
-        sync_group = QGroupBox("Автоматическая синхронизация")
-        sync_layout = QVBoxLayout(sync_group)
-        sync_layout.setSpacing(10)
-
-        time_layout = QHBoxLayout()
-        time_layout.addWidget(QLabel("Запускать каждый день в:"))
+        # ================= КАРТОЧКА 2: Автосинхронизация =================
+        card_sync = SettingsCard("Автоматическая синхронизация")
+        
+        time_row = QHBoxLayout()
+        time_row.addWidget(QLabel("Запускать каждый день в:"))
         
         self.time_edit = QTimeEdit()
         self.time_edit.setDisplayFormat("HH:mm")
         self.time_edit.setTime(QTime(6, 0))
-        self.time_edit.setMaximumWidth(80)
+        self.time_edit.setFixedWidth(80)
         
         self.apply_schedule_btn = QPushButton("Применить расписание")
         self.apply_schedule_btn.clicked.connect(self.apply_schedule)
         
-        time_layout.addWidget(self.time_edit)
-        time_layout.addWidget(self.apply_schedule_btn)
-        time_layout.addStretch()
-        sync_layout.addLayout(time_layout)
-
-        manual_layout = QHBoxLayout()
+        time_row.addWidget(self.time_edit)
+        time_row.addWidget(self.apply_schedule_btn)
+        time_row.addStretch()
+        
+        manual_row = QHBoxLayout()
         self.manual_sync_btn = QPushButton("Запустить синхронизацию за вчера сейчас")
         self.manual_sync_btn.clicked.connect(self.run_manual_sync)
-        self.manual_sync_btn.setMaximumWidth(350)
+        manual_row.addWidget(self.manual_sync_btn)
+        manual_row.addStretch()
         
-        manual_layout.addWidget(self.manual_sync_btn)
-        manual_layout.addStretch()
-        sync_layout.addLayout(manual_layout)
+        card_sync.content_layout.addLayout(time_row)
+        card_sync.content_layout.addLayout(manual_row)
+        layout.addWidget(card_sync)
 
-        layout.addWidget(sync_group)
-
-        # --- Группа 3: Синхронизация с GitHub ---
-        git_group = QGroupBox("Синхронизация с GitHub")
-        git_layout = QVBoxLayout(git_group)
+        # ================= КАРТОЧКА 3: Синхронизация с GitHub =================
+        card_git = SettingsCard("Синхронизация с GitHub")
         
-        git_btn_layout = QHBoxLayout()
+        git_btn_row = QHBoxLayout()
+        
         self.btn_push = QPushButton("📤 Отправить на GitHub (Push)")
         self.btn_push.clicked.connect(self.git_push)
-        self.btn_push.setStyleSheet("background-color: #ddf4ff; padding: 6px;")
+        self.btn_push.setStyleSheet("""
+            QPushButton {
+                background-color: #ddf4ff; 
+                border: 1px solid #54aeff;
+                color: #0969da;
+            }
+            QPushButton:hover { background-color: #b6e3ff; }
+        """)
         
         self.btn_pull = QPushButton("📥 Скачать с GitHub (Pull)")
         self.btn_pull.clicked.connect(self.git_pull)
-        self.btn_pull.setStyleSheet("background-color: #dafbe1; padding: 6px;")
+        self.btn_pull.setStyleSheet("""
+            QPushButton {
+                background-color: #dafbe1; 
+                border: 1px solid #4ac26b;
+                color: #1a7f37;
+            }
+            QPushButton:hover { background-color: #aceebb; }
+        """)
         
-        git_btn_layout.addWidget(self.btn_push)
-        git_btn_layout.addWidget(self.btn_pull)
-        git_btn_layout.addStretch()
-        git_layout.addLayout(git_btn_layout)
+        git_btn_row.addWidget(self.btn_push)
+        git_btn_row.addWidget(self.btn_pull)
+        git_btn_row.addStretch()
         
         self.git_log = QTextEdit()
         self.git_log.setReadOnly(True)
-        self.git_log.setMaximumHeight(100)
-        self.git_log.setStyleSheet("background-color: #f5f7fa; font-family: Consolas, monospace; font-size: 11px; border: 1px solid #d0d7de;")
+        self.git_log.setFixedHeight(80)
         self.git_log.append("Здесь будет отображаться статус синхронизации.")
-        git_layout.addWidget(self.git_log)
         
-        layout.addWidget(git_group)
-        
+        card_git.content_layout.addLayout(git_btn_row)
+        card_git.content_layout.addWidget(self.git_log)
+        layout.addWidget(card_git)
+
         # Статус бар
         self.status_label = QLabel("")
         self.status_label.setStyleSheet("color: #1a7f37; font-weight: bold;")
         layout.addWidget(self.status_label)
         
         layout.addStretch()
+        
+        scroll.setWidget(content_widget)
+        main_layout.addWidget(scroll)
+
+    # --- Универсальное красивое всплывающее окно ---
+    def _show_message(self, title: str, text: str, is_error: bool = False):
+        msg = QMessageBox(self)
+        msg.setWindowTitle(title)
+        
+        if is_error:
+            # Красное окно для ошибок
+            msg.setIcon(QMessageBox.Icon.Critical)
+            msg.setText(f"<span style='color: #cf222e; font-size: 13px;'>{text}</span>")
+        else:
+            # Зеленое окно для успеха (убираем стандартную иконку "i")
+            msg.setIcon(QMessageBox.Icon.NoIcon)
+            msg.setText(f"<span style='color: #1a7f37; font-size: 14px; font-weight: bold;'>✅ {text}</span>")
+            # Делаем кнопку ОК зеленой
+            msg.setStyleSheet("""
+                QPushButton {
+                    background-color: #1f883d; 
+                    color: white; 
+                    border: 1px solid #1a7f37;
+                    padding: 4px 16px;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }
+                QPushButton:hover { background-color: #1a7f37; }
+            """)
+        
+        msg.exec()
 
     # --- Логика API ---
     def save_api_token(self):
         token = self.token_input.text().strip()
         if not token:
-            QMessageBox.warning(self, "Ошибка", "Токен не может быть пустым")
+            self._show_message("Ошибка", "Токен не может быть пустым", is_error=True)
             return
         save_token(token)
-        self.status_label.setText("Токен успешно сохранён в Windows Credential Manager.")
+        self.status_label.setText("✅ Токен успешно сохранён")
         self.status_label.setStyleSheet("color: #1a7f37; font-weight: bold;")
 
     def check_ping(self):
         token = self.token_input.text().strip()
         if not token:
-            QMessageBox.warning(self, "Ошибка", "Сначала введите токен")
+            self._show_message("Внимание", "Сначала введите токен", is_error=True)
             return
         try:
             client = WBAPIClient(token)
-            resp = client.ping()
-            QMessageBox.information(self, "Успех", f"Связь с WB установлена!\nОтвет: {resp}")
+            client.ping() # Вызываем пинг, но не сохраняем ответ, чтобы не показывать лишнее
+            self._show_message("Успех", "Связь с WB установлена!")
         except WBAPIError as e:
-            QMessageBox.critical(self, "Ошибка API", str(e))
+            self._show_message("Ошибка API", str(e), is_error=True)
         except Exception as e:
-            QMessageBox.critical(self, "Ошибка", f"Неизвестная ошибка: {e}")
+            self._show_message("Ошибка", f"Неизвестная ошибка: {e}", is_error=True)
 
     # --- Логика автосинхронизации ---
     def apply_schedule(self):
@@ -192,15 +324,14 @@ class SettingsTab(QWidget):
         self.status_label.setText("Синхронизация завершена. Проверьте вкладку «Дашборд».")
         self.status_label.setStyleSheet("color: #1a7f37; font-weight: bold;")
 
-    # --- Логика Git-синхронизации ---
+    # --- Логика Git ---
     def git_push(self):
         self.git_log.clear()
-        self.git_log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Запуск отправки на GitHub...")
+        self.git_log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Запуск отправки...")
         self.btn_push.setEnabled(False)
         self.btn_pull.setEnabled(False)
         
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # Добавляем, коммитим и отправляем
         cmd = f'git add . & git commit -m "Auto-sync from app {timestamp}" & git push'
         
         self.git_thread = GitSyncThread(cmd)
@@ -221,7 +352,7 @@ class SettingsTab(QWidget):
         reply = QMessageBox.question(
             self, "Внимание", 
             "Вы собираетесь скачать изменения с GitHub.\n\n"
-            "⚠️ Если файл базы данных (data/wb.db) сейчас заблокирован программой, скачивание может завершиться ошибкой.\n\n"
+            "⚠️ Если база данных сейчас заблокирована программой, скачивание может завершиться ошибкой.\n\n"
             "Продолжить?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
@@ -229,11 +360,10 @@ class SettingsTab(QWidget):
             return
 
         self.git_log.clear()
-        self.git_log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Скачивание изменений с GitHub...")
+        self.git_log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Скачивание...")
         self.btn_push.setEnabled(False)
         self.btn_pull.setEnabled(False)
         
-        # Принудительно берем версию с GitHub
         cmd = 'git fetch origin & git reset --hard origin/master'
         
         self.git_thread = GitSyncThread(cmd)
@@ -245,8 +375,7 @@ class SettingsTab(QWidget):
         self.btn_pull.setEnabled(True)
         if success:
             self.git_log.append("✅ Изменения успешно скачаны!")
-            self.git_log.append("⚠️ Пожалуйста, закройте и откройте программу заново, чтобы она подхватила новую базу данных.")
+            self.git_log.append("⚠️ Закройте и откройте программу заново, чтобы обновить данные.")
         else:
-            self.git_log.append("❌ Ошибка при скачивании (возможно, база данных занята):")
+            self.git_log.append("❌ Ошибка (возможно, база занята):")
             self.git_log.append(output)
-            self.git_log.append("\n💡 Попробуйте закрыть программу, открыть снова и нажать Скачать еще раз.")
