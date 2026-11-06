@@ -1,3 +1,4 @@
+from app.ui.ads_tab import AdsTab
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import (
@@ -96,9 +97,11 @@ class MainWindow(QMainWindow):
         self.reports = None
         self.costs = None
         self.stats = None
+        self.ads = None
         self.settings = None
         
-        for name in ["Статистика", "Товары", "Отчёты", "Настройки"]:
+        # Название вкладки теперь с пробелами
+        for name in ["Статистика", "Товары", "Отчёты", "Продвижение | Кампании", "Настройки"]:
             ph = QWidget()
             self._placeholders[name] = ph
             self.tabs.addTab(ph, name)
@@ -144,6 +147,9 @@ class MainWindow(QMainWindow):
             elif name == "Статистика":
                 self.stats = StatsTab()
                 actual = self.stats
+            elif name == "Продвижение | Кампании":
+                self.ads = AdsTab()
+                actual = self.ads
             else:
                 self.settings = SettingsTab()
                 actual = self.settings
@@ -190,6 +196,7 @@ class MainWindow(QMainWindow):
         if self.reports: self.reports.load_data()
         if self.costs: self.costs.load_data()
         if self.stats: self.stats.refresh()
+        if self.ads: self.ads.load_from_db()
 
     def on_sync_error(self, err):
         self._dialog_timer.stop()
@@ -208,5 +215,8 @@ class MainWindow(QMainWindow):
             self.show_normal()
 
     def closeEvent(self, event):
-        QApplication.instance().quit()
+        # Останавливаем фоновый поток рекламы, не блокируя интерфейс надолго
+        if self.ads:
+            self.ads.stop()
+        # Принимаем событие закрытия
         event.accept()
