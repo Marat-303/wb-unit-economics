@@ -4,7 +4,6 @@ import time
 
 class WBAdAPI:
     BASE_URL = "https://advert-api.wildberries.ru"
-    STATS_URL = "https://statistics-api.wildberries.ru"
 
     def __init__(self, token):
         self.headers = {"Authorization": token}
@@ -100,67 +99,54 @@ class WBAdAPI:
         except Exception as e:
             raise Exception(f"Ошибка получения товаров кампании: {e}")
 
-    def get_campaign_stats(self, advert_id: int, nm_ids: list[int], days: int = 7) -> dict:
-        """Считает ОБЩИЙ расход и ОБЩУЮ выручку по кампании за N дней."""
+    def get_product_positions(self, advert_id: int, nm_ids: list[int]) -> dict[int, float]:
+        """Пытается извлечь среднюю позицию из boosterStats в fullstats."""
+        # Запрашиваем статистику за последние 7 дней, чтобы точно попасть в данные
         end_date = datetime.date.today().strftime("%Y-%m-%d")
-        start_date = (datetime.date.today() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+        start_date = (datetime.date.today() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
         
-        total_spend = 0.0
-        total_revenue = 0.0
-
-        url_adv = f"{self.BASE_URL}/adv/v3/fullstats"
-        params_adv = {"beginDate": start_date, "endDate": end_date, "ids": str(advert_id)}
+        url = f"{self.BASE_URL}/adv/v3/fullstats"
+        params = {"beginDate": start_date, "endDate": end_date, "ids": str(advert_id)}
         
-        # 1. Расход и выручка из рекламного API
         for attempt in range(3):
             try:
-                resp = requests.get(url_adv, headers=self.headers, params=params_adv, timeout=20)
+                resp = requests.get(url, headers=self.headers, params=params, timeout=20)
                 if resp.status_code == 429:
                     time.sleep(60)
                     continue
                 if resp.status_code != 200:
-                    break
+                    return {}
                 
                 data = resp.json()
+                result = {}
+                # fullstats возвращает список кампаний
                 for camp in data:
-                    if camp.get("advertId") != advert_id: continue
-                    for day in camp.get("days", []):
-                        total_spend += float(day.get("sum", 0))
-                        for nm_stat in day.get("nms", []):
-                            total_revenue += float(nm_stat.get("sum_price", 0))
-                break
-            except Exception as e:
-                print(f"Ошибка fullstats: {e}")
+                    if camp.get("advertId") != advert_id:
+                        continue
+                    
+                    # 1. Пытаемся найти boosterStats на верхнем уровне кампании
+                    booster = camp.get("boosterStats")
+                    if booster:
+                        for item in booster:
+                            nm = item.get("nm")
+                            avg_pos = item.get("avg_position")
+                            if nm and avg_pos is not None:
+                                result[int(nm)] = float(avg_pos)
+                    
+                    # 2. Если на верхнем уровне пусто, пробуем поискать внутри days
+                    if not result:
+                        for day in camp.get("days", []):
+                            day_booster = day.get("boosterStats")
+                            if day_booster:
+                                for item in day_booster:
+                                    nm = item.get("nm")
+                                    avg_pos = item.get("avg_position")
+                                    if nm and avg_pos is not None:
+                                        result[int(nm)] = float(avg_pos)
+                return result
+            except Exception:
                 time.sleep(5)
-
-        # 2. Если рекламная выручка нулевая, берем выручку из заказов (по тем же артикулам)
-        if total_revenue == 0:
-            url_orders = f"{self.STATS_URL}/api/v1/supplier/orders"
-            params_orders = {"dateFrom": f"{start_date}T00:00:00"}
-            try:
-                resp = requests.get(url_orders, headers=self.headers, params=params_orders, timeout=20)
-                if resp.status_code == 200:
-                    orders = resp.json()
-                    if isinstance(orders, list):
-                        for order in orders:
-                            if order.get("isCancel", False): continue
-                            nm_id = order.get("nmId")
-                            if nm_id in nm_ids:
-                                total_revenue += float(order.get("priceWithDisc", 0))
-            except Exception as e:
-                print(f"Ошибка orders: {e}")
-
-        drr = 0.0
-        if total_spend > 0 and total_revenue == 0:
-            drr = 999.9
-        elif total_revenue > 0:
-            drr = (total_spend / total_revenue) * 100
-        
-        return {
-            "total_spend": total_spend,
-            "total_revenue": total_revenue,
-            "drr": round(drr, 1) if drr != 999.9 else 999.9
-        }
+        return {}
 
     def update_bid(self, advert_id: int, nm_id: int, new_bid_rub: float) -> bool:
         url = f"{self.BASE_URL}/api/advert/v1/bids"

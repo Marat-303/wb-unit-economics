@@ -1,8 +1,21 @@
 {
     "enabled": true,
     "campaign_id": 36756941,
-    "max_bid": 22.0,
-    "target_drr": 14.0,
-    "step_up": 5.0,
-    "step_down": 3.0
+    "max_bid": 25.0,
+    "target_drr": 12.5,
+    "step_up": 10.0,
+    "step_down": 10.0,
+    "target_pos": 5,
+    "enable_night_mode": true,
+    "night_bid": 10.0,
+    "product_settings": {
+        "252963550": {
+            "max_bid": 25.0,
+            "target_pos": 5
+        },
+        "252964181": {
+            "max_bid": 8.0,
+            "target_pos": 20
+        }
+    }
 }

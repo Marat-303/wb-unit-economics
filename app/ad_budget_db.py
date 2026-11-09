@@ -41,6 +41,14 @@ def update_limit(campaign_id, campaign_name, daily_limit, auto_pause):
         """, (campaign_id, campaign_name, daily_limit, auto_pause))
         conn.commit()
 
+def delete_limit(campaign_id):
+    """Удаляет кампанию из базы данных (например, если она закрыта на WB)"""
+    init_db()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM advert_limits WHERE campaign_id = ?", (campaign_id,))
+        conn.commit()
+
 def set_paused_date(campaign_id, date_str: str):
     init_db()
     with get_connection() as conn:
