@@ -1,6 +1,9 @@
 import requests
 import datetime
 import time
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class WBAdAPI:
     BASE_URL = "https://advert-api.wildberries.ru"
@@ -13,7 +16,7 @@ class WBAdAPI:
         url = f"{self.BASE_URL}/api/advert/v2/adverts"
         params = {"statuses": "9,11"}
         try:
-            resp = requests.get(url, headers=self.headers, params=params, timeout=10)
+            resp = requests.get(url, headers=self.headers, params=params, timeout=10, verify=False)
             if resp.status_code != 200:
                 raise Exception(f"HTTP {resp.status_code}: {resp.text}")
             data = resp.json()
@@ -44,17 +47,19 @@ class WBAdAPI:
         params = {"beginDate": today, "endDate": today, "ids": ids_str}
         for attempt in range(3):
             try:
-                resp = requests.get(url, headers=self.headers, params=params, timeout=15)
+                resp = requests.get(url, headers=self.headers, params=params, timeout=15, verify=False)
                 if resp.status_code == 200:
                     data = resp.json()
                     result = {}
                     for camp in data:
                         camp_id = camp.get("advertId")
-                        total_sum = sum(day.get("sum", 0) for day in camp.get("days", []))
-                        result[camp_id] = total_sum
+                        days = camp.get("days", [])
+                        if days: # Если есть данные за сегодня
+                            total_sum = sum(day.get("sum", 0) for day in days)
+                            result[camp_id] = total_sum
                     return result
                 elif resp.status_code == 429:
-                    time.sleep(60)
+                    time.sleep(60) # Если блок, ждем минуту
                 else:
                     raise Exception(f"Ошибка API {resp.status_code}: {resp.text}")
             except Exception:
@@ -63,19 +68,19 @@ class WBAdAPI:
 
     def pause_campaign(self, campaign_id: int) -> bool:
         url = f"{self.BASE_URL}/adv/v0/pause?id={campaign_id}"
-        resp = requests.get(url, headers=self.headers, timeout=10)
+        resp = requests.get(url, headers=self.headers, timeout=10, verify=False)
         return resp.status_code in (200, 204)
 
     def start_campaign(self, campaign_id: int) -> bool:
         url = f"{self.BASE_URL}/adv/v0/start?id={campaign_id}"
-        resp = requests.get(url, headers=self.headers, timeout=10)
+        resp = requests.get(url, headers=self.headers, timeout=10, verify=False)
         return resp.status_code in (200, 204)
 
     def get_campaign_products(self, advert_id: int) -> list[dict]:
         url = f"{self.BASE_URL}/api/advert/v2/adverts"
         params = {"statuses": "9,11"}
         try:
-            resp = requests.get(url, headers=self.headers, params=params, timeout=15)
+            resp = requests.get(url, headers=self.headers, params=params, timeout=15, verify=False)
             if resp.status_code != 200:
                 raise Exception(f"HTTP {resp.status_code}: {resp.text}")
             data = resp.json()
@@ -100,8 +105,7 @@ class WBAdAPI:
             raise Exception(f"Ошибка получения товаров кампании: {e}")
 
     def get_product_positions(self, advert_id: int, nm_ids: list[int]) -> dict[int, float]:
-        """Пытается извлечь среднюю позицию из boosterStats в fullstats."""
-        # Запрашиваем статистику за последние 7 дней, чтобы точно попасть в данные
+        """Пытается извлечь среднюю позицию из boosterStats за 7 дней."""
         end_date = datetime.date.today().strftime("%Y-%m-%d")
         start_date = (datetime.date.today() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
         
@@ -110,7 +114,7 @@ class WBAdAPI:
         
         for attempt in range(3):
             try:
-                resp = requests.get(url, headers=self.headers, params=params, timeout=20)
+                resp = requests.get(url, headers=self.headers, params=params, timeout=20, verify=False)
                 if resp.status_code == 429:
                     time.sleep(60)
                     continue
@@ -119,12 +123,10 @@ class WBAdAPI:
                 
                 data = resp.json()
                 result = {}
-                # fullstats возвращает список кампаний
                 for camp in data:
                     if camp.get("advertId") != advert_id:
                         continue
                     
-                    # 1. Пытаемся найти boosterStats на верхнем уровне кампании
                     booster = camp.get("boosterStats")
                     if booster:
                         for item in booster:
@@ -133,7 +135,6 @@ class WBAdAPI:
                             if nm and avg_pos is not None:
                                 result[int(nm)] = float(avg_pos)
                     
-                    # 2. Если на верхнем уровне пусто, пробуем поискать внутри days
                     if not result:
                         for day in camp.get("days", []):
                             day_booster = day.get("boosterStats")
@@ -153,7 +154,7 @@ class WBAdAPI:
         bid_kopecks = int(round(new_bid_rub * 100))
         payload = {"bids": [{"advert_id": advert_id, "nm_bids": [{"nm_id": nm_id, "bid_kopecks": bid_kopecks, "placement": "search"}]}]}
         try:
-            resp = requests.patch(url, headers=self.headers, json=payload, timeout=15)
+            resp = requests.patch(url, headers=self.headers, json=payload, timeout=15, verify=False)
             return resp.status_code in (200, 204)
         except Exception:
             return False

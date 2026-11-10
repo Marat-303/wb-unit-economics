@@ -1,10 +1,16 @@
+import datetime
 import math
 from app.db import get_connection
-from app.costs import get_costs_map
+
 
 def calculate_unit_economics(date_from: str, date_to: str) -> dict:
     conn = get_connection()
     try:
+        # Получаем все себестоимости в словарь для быстрого поиска
+        # Формат: {(nm_id, year, month): cost_rub}
+        costs_rows = conn.execute("SELECT nm_id, year, month, cost_rub FROM cost_prices").fetchall()
+        costs_map = {(row["nm_id"], row["year"], row["month"]): float(row["cost_rub"]) for row in costs_rows}
+
         sales_rows = conn.execute(
             """
             SELECT s.report_date, s.nm_id, COALESCE(p.title, s.sa_name, '') AS name, SUM(s.quantity) AS qty,
@@ -38,7 +44,6 @@ def calculate_unit_economics(date_from: str, date_to: str) -> dict:
     finally:
         conn.close()
 
-    costs = get_costs_map()
     by_article: dict[int, dict] = {}
     by_day: dict[str, dict] = {}
 
@@ -51,7 +56,13 @@ def calculate_unit_economics(date_from: str, date_to: str) -> dict:
         payout = float(r["payout"] or 0)
         wb_costs = revenue - payout
 
-        cost_unit = costs.get(nm_id)
+        # ОПРЕДЕЛЯЕМ СЕБЕСТОИМОСТЬ ПО ДАТЕ ПРОДАЖИ
+        try:
+            dt = datetime.datetime.strptime(date_key, "%Y-%m-%d").date()
+            cost_unit = costs_map.get((nm_id, dt.year, dt.month))
+        except Exception:
+            cost_unit = None
+
         has_cost = cost_unit is not None
         cost_total = cost_unit * qty if has_cost else 0.0
         profit_article = payout - cost_total
@@ -76,6 +87,8 @@ def calculate_unit_economics(date_from: str, date_to: str) -> dict:
         a["payout"] += payout
         a["cost"] += cost_total
         a["profit"] += profit_article
+        if not has_cost:
+            a["has_cost"] = False
 
         if date_key not in by_day:
             by_day[date_key] = {

@@ -1,5 +1,6 @@
 from datetime import date
 import math
+import calendar
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor, QFont, QFontMetrics
 from PyQt6.QtWidgets import (
@@ -364,8 +365,6 @@ class DashboardTab(QWidget):
             return
 
         # ================= ИЗМЕНЕНИЕ ЗДЕСЬ =================
-        # Если нажата кнопка "День" или "Неделя" (текст кнопки месяца сброшен) и период короткий — скрываем
-        # Во всех остальных случаях (выбран месяц) — показываем
         if self.month_btn.text() == "Выбрать месяц" and qdate_from.daysTo(qdate_to) <= 6:
             self.card_net_profit.hide()
         else:
@@ -399,15 +398,24 @@ class DashboardTab(QWidget):
         if num_days > 0:
             avg_ads = f"{round(totals['ads'] / num_days):,.0f}".replace(",", " ")
             avg_profit = f"{totals['profit'] / num_days:,.2f}".replace(",", " ")
-            avg_net = f"{net_profit / num_days:,.2f}".replace(",", " ")
+            avg_net_val = net_profit / num_days
+            avg_net = f"{avg_net_val:,.2f}".replace(",", " ")
+            
+            # === РАСЧЕТ ПРОГНОЗА НА МЕСЯЦ ===
+            days_in_month = calendar.monthrange(qdate_to.year(), qdate_to.month())[1]
+            forecast_net_val = avg_net_val * days_in_month
+            forecast_net_str = f"{forecast_net_val:,.2f}".replace(",", " ")
             
             sub_ads = f"Среднее в день: <span style='color:#cf222e; font-weight: bold;'>{avg_ads} ₽</span>"
             sub_profit = f"Среднее в день: <span style='color:{profit_color}; font-weight: bold;'>{avg_profit} ₽</span>"
+            
+            # Формируем двойную подпись для чистой прибыли
             sub_net = f"Среднее в день: <span style='color:{net_profit_color}; font-weight: bold;'>{avg_net} ₽</span>"
+            sub_net += f"<br>Прогноз на месяц: <span style='color:#0969da; font-weight: bold;'>{forecast_net_str} ₽</span>"
         else:
             sub_ads = "Среднее в день: —"
             sub_profit = "Среднее в день: —"
-            sub_net = "Среднее в день: —"
+            sub_net = "Среднее в день: —<br>Прогноз на месяц: —"
         
         self.card_revenue.set_value(f"{rev_str} ₽")
         self.card_payout.set_value(f"{pay_str} ₽")

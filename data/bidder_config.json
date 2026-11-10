@@ -10,12 +10,14 @@
     "night_bid": 10.0,
     "product_settings": {
         "252963550": {
-            "max_bid": 25.0,
-            "target_pos": 5
+            "max_bid": 24.0,
+            "target_pos": 5,
+            "night_bid": 10.0
         },
         "252964181": {
-            "max_bid": 8.0,
-            "target_pos": 20
+            "max_bid": 5.0,
+            "target_pos": 20,
+            "night_bid": 5.0
         }
     }
 }

@@ -14,18 +14,21 @@ class AdBidderWorker(QThread):
                  interval_min: int = 5, enable_night_mode: bool = False, night_bid: float = 10.0):
         super().__init__()
         self.advert_id = advert_id
-        self.product_settings = product_settings # { "nm_id": {"max_bid": X, "target_pos": Y} }
+        self.product_settings = product_settings
         self.step_up = step_up
         self.step_down = step_down
         self.interval_sec = interval_min * 60
         self.enable_night_mode = enable_night_mode
-        self.night_bid = night_bid
+        self.night_bid = night_bid # Глобальный резерв, если в настройках товара нет ставки
         self.running = True
 
     def run(self):
         self.log_signal.emit(f"🤖 Автобиддер (Индивидуальные настройки) запущен.")
         if self.enable_night_mode:
-            self.log_signal.emit(f"🌙 Ночной режим ВКЛ: с 00:00 до 06:00 ставка будет падать до {self.night_bid} ₽.")
+            self.log_signal.emit(f"🌙 Ночной режим ВКЛ: с 00:00 до 06:00 ставки будут снижаться согласно настройкам товаров.")
+        
+        # Ждем 10 секунд при старте, чтобы не пересечься с запросом контроля бюджета
+        time.sleep(10)
             
         while self.running:
             try:
@@ -43,6 +46,7 @@ class AdBidderWorker(QThread):
             self.log_signal.emit("⚠️ Токен не найден.")
             return
         api = WBAdAPI(token)
+        
         try:
             products = api.get_campaign_products(self.advert_id)
         except Exception as e:
@@ -69,7 +73,9 @@ class AdBidderWorker(QThread):
         positions = {}
         if not is_night:
             nm_ids = [p["nm_id"] for p in products]
+            self.log_signal.emit("⏳ Запрос позиций у WB...")
             positions = api.get_product_positions(self.advert_id, nm_ids)
+            self.log_signal.emit(f"📊 Получены позиции: {positions}")
         else:
             self.log_signal.emit(f"🌙 Ночной режим. Проверка ставок...")
 
@@ -81,25 +87,23 @@ class AdBidderWorker(QThread):
             current_bid = p["current_bid_rub"]
             pos = positions.get(nm_id)
             
-            # ЖЕСТКО ПРИВОДИМ К ТИПАМ ДЛЯ НАДЕЖНОСТИ
-            p_sett = self.product_settings.get(str(nm_id), {"max_bid": 30.0, "target_pos": 10})
+            p_sett = self.product_settings.get(str(nm_id), {"max_bid": 30.0, "target_pos": 10, "night_bid": self.night_bid})
             p_max_bid = float(p_sett.get("max_bid", 30.0))
             p_target_pos = int(p_sett.get("target_pos", 10))
+            p_night_bid = float(p_sett.get("night_bid", self.night_bid))
 
             status = "—"
             new_bid = current_bid
             action = None
 
             if is_night:
-                # === НОЧНОЙ РЕЖИМ ===
-                new_bid = self.night_bid
+                new_bid = p_night_bid
                 if abs(current_bid - new_bid) > 0.01:
                     status = f"🌙 Снижение на ночь до {new_bid:.2f} ₽"
                     action = new_bid
                 else:
                     status = "🌙 Ночной режим (ОК)"
             else:
-                # === ДНЕВНОЙ РЕЖИМ ===
                 if current_bid > p_max_bid:
                     new_bid = p_max_bid
                     status = f"⬇️ Снижение до лимита {new_bid:.2f} ₽"
@@ -107,7 +111,6 @@ class AdBidderWorker(QThread):
                 elif pos is None:
                     status = "⚠️ Нет данных о позиции"
                 elif pos > p_target_pos:
-                    # Позиция хуже цели — повышаем
                     if current_bid < p_max_bid:
                         new_bid = min(current_bid * (1 + self.step_up / 100), p_max_bid)
                         if new_bid > current_bid:
@@ -118,7 +121,6 @@ class AdBidderWorker(QThread):
                     else:
                         status = f"⚠️ Лимит {p_max_bid:.2f} ₽"
                 else:
-                    # Позиция в топе или лучше — снижаем
                     if current_bid > 1.0:
                         new_bid = max(current_bid * (1 - self.step_down / 100), 1.0)
                         if new_bid < current_bid:

@@ -184,10 +184,10 @@ class AdsTab(QWidget):
         # КАРТОЧКА 3: Товары и Автобиддер
         card_products = SettingsCard("Товары в кампании и ставки (Автобиддер)")
         self.products_table = QTableWidget()
-        self.products_table.setColumnCount(7)
+        self.products_table.setColumnCount(8)
         self.products_table.setHorizontalHeaderLabels([
             "Артикул (nm_id)", "Старая ставка (₽)", "Новая ставка (₽)", 
-            "Позиция (ср.)", "Макс. ставка (₽)", "Целевая позиция", "Статус"
+            "Позиция (ср.)", "Макс. ставка (₽)", "Целевая позиция", "Ставка ночью (₽)", "Статус"
         ])
         self.products_table.verticalHeader().setVisible(False)
         self.products_table.setAlternatingRowColors(True)
@@ -202,10 +202,12 @@ class AdsTab(QWidget):
         p_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         p_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive) 
         p_header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive) 
-        p_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        p_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive) 
+        p_header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
         
         self.products_table.setColumnWidth(4, 140)
         self.products_table.setColumnWidth(5, 130)
+        self.products_table.setColumnWidth(6, 130)
         
         card_products.content_layout.addWidget(self.products_table)
 
@@ -225,9 +227,9 @@ class AdsTab(QWidget):
         self.step_down_spin.setValue(10.0)
         bidder_settings_1.addWidget(self.step_down_spin)
         
-        bidder_settings_1.addSpacing(20) # Отступ между шагами и ночным режимом
+        bidder_settings_1.addSpacing(20)
 
-        # НОЧНОЙ РЕЖИМ ИДЕТ СРАЗУ ПОСЛЕ ШАГОВ
+        # НОЧНОЙ РЕЖИМ
         self.night_mode_btn = QPushButton("🌙 Ночной режим: ВЫКЛ")
         self.night_mode_btn.setCheckable(True)
         self.night_mode_btn.setStyleSheet("""
@@ -247,14 +249,6 @@ class AdsTab(QWidget):
         night_hint.setStyleSheet("color: #666; font-size: 12px;")
         bidder_settings_1.addWidget(night_hint)
         
-        bidder_settings_1.addSpacing(10)
-        bidder_settings_1.addWidget(QLabel("Ставка ночью (₽):"))
-        self.night_bid_spin = QDoubleSpinBox()
-        self.night_bid_spin.setRange(1.0, 1000.0)
-        self.night_bid_spin.setValue(10.0)
-        bidder_settings_1.addWidget(self.night_bid_spin)
-        
-        # РАСТЯЖКА ОТОДВИГАЕТ ВСЕ ОСТАЛЬНОЕ ВПРАВО
         bidder_settings_1.addStretch()
 
         self.start_bidder_btn = QPushButton("🚀 Запустить автобиддер")
@@ -316,7 +310,6 @@ class AdsTab(QWidget):
         is_night_mode = config.get("enable_night_mode", False)
         self.night_mode_btn.setChecked(is_night_mode)
         self.toggle_night_mode_ui(is_night_mode)
-        self.night_bid_spin.setValue(config.get("night_bid", 10.0))
         
         if self.campaign_id:
             self.log_text.append("Восстановление автобиддера: загрузка товаров...")
@@ -377,7 +370,7 @@ class AdsTab(QWidget):
             item_pos.setForeground(QColor("#1f2328"))
             self.products_table.setItem(i, 3, item_pos)
             
-            nm_sett = saved_settings.get(str(nm_id), {"max_bid": 30.0, "target_pos": 10})
+            nm_sett = saved_settings.get(str(nm_id), {"max_bid": 30.0, "target_pos": 10, "night_bid": 10.0})
             
             max_bid_input = QDoubleSpinBox()
             max_bid_input.setRange(1.0, 1000.0)
@@ -392,11 +385,18 @@ class AdsTab(QWidget):
             target_pos_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
             target_pos_input.setStyleSheet("font-weight: bold;")
             self.products_table.setCellWidget(i, 5, target_pos_input)
+            
+            night_bid_input = QDoubleSpinBox()
+            night_bid_input.setRange(1.0, 1000.0)
+            night_bid_input.setValue(nm_sett.get("night_bid", 10.0))
+            night_bid_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            night_bid_input.setStyleSheet("font-weight: bold;")
+            self.products_table.setCellWidget(i, 6, night_bid_input)
 
             item_status = QTableWidgetItem("Ожидание...")
             item_status.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item_status.setForeground(QColor("#666"))
-            self.products_table.setItem(i, 6, item_status)
+            self.products_table.setItem(i, 7, item_status)
         
         if not self.start_bidder_btn.isChecked():
             self.log_text.append(f"Загружено {len(products)} товаров. Настройте параметры и запускайте.")
@@ -440,7 +440,7 @@ class AdsTab(QWidget):
                 item_status.setForeground(QColor("#cf222e"))
             else:
                 item_status.setForeground(QColor("#1f2328"))
-            self.products_table.setItem(i, 6, item_status)
+            self.products_table.setItem(i, 7, item_status)
 
     def toggle_bidder(self):
         config = load_bidder_config()
@@ -456,12 +456,14 @@ class AdsTab(QWidget):
                 nm_item = self.products_table.item(i, 0)
                 max_bid_widget = self.products_table.cellWidget(i, 4)
                 target_pos_widget = self.products_table.cellWidget(i, 5)
+                night_bid_widget = self.products_table.cellWidget(i, 6)
                 
-                if nm_item and max_bid_widget and target_pos_widget:
+                if nm_item and max_bid_widget and target_pos_widget and night_bid_widget:
                     nm_id = nm_item.text()
                     product_settings[nm_id] = {
                         "max_bid": max_bid_widget.value(),
-                        "target_pos": target_pos_widget.value()
+                        "target_pos": target_pos_widget.value(),
+                        "night_bid": night_bid_widget.value()
                     }
                 
             config.update({
@@ -470,8 +472,7 @@ class AdsTab(QWidget):
                 "product_settings": product_settings,
                 "step_up": self.step_up_spin.value(),
                 "step_down": self.step_down_spin.value(),
-                "enable_night_mode": self.night_mode_btn.isChecked(),
-                "night_bid": self.night_bid_spin.value()
+                "enable_night_mode": self.night_mode_btn.isChecked()
             })
             save_bidder_config(config)
             
@@ -485,7 +486,7 @@ class AdsTab(QWidget):
                 step_down=self.step_down_spin.value(),
                 interval_min=5,
                 enable_night_mode=self.night_mode_btn.isChecked(),
-                night_bid=self.night_bid_spin.value()
+                night_bid=10.0 # Глобальный резерв
             )
             self.bidder_worker.log_signal.connect(self.log_text.append)
             self.bidder_worker.products_updated.connect(self.update_products_ui)
@@ -545,9 +546,11 @@ class AdsTab(QWidget):
             item_name = self._make_bold_item(name)
             item_name.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(i, 1, item_name)
+            
             spend_val = self.current_stats.get(camp_id)
             spend_str = f"{spend_val:.2f}" if spend_val is not None else "Загрузка..."
             self.table.setItem(i, 2, self._make_red_item(spend_str))
+            
             limit_str = f"{limit:g}" if isinstance(limit, (int, float)) else str(limit)
             limit_input = QLineEdit(limit_str)
             limit_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -621,10 +624,13 @@ class AdsTab(QWidget):
         for i in range(self.table.rowCount()):
             try:
                 camp_id = int(self.table.item(i, 0).text())
-                spend_val = stats.get(camp_id)
-                spend_str = f"{spend_val:.2f}" if spend_val is not None else "0.00"
-                self.table.setItem(i, 2, self._make_red_item(spend_str))
+                if camp_id in stats:
+                    spend_val = stats[camp_id]
+                    spend_str = f"{spend_val:.2f}"
+                    self.table.setItem(i, 2, self._make_red_item(spend_str))
+                
                 self.table.setItem(i, 6, self._make_bold_item(current_time))
+                
                 for row in get_all_limits():
                     if row[0] == camp_id:
                         last_paused = row[4]
