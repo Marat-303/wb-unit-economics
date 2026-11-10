@@ -30,6 +30,44 @@ def save_bidder_config(config: dict):
     with open(BIDDER_CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=4)
 
+# ================= КАСТОМНАЯ КНОПКА С КРАСИВОЙ ПОДСКАЗКОЙ =================
+class HoverButton(QPushButton):
+    def __init__(self, text: str, tooltip_text: str, parent=None):
+        super().__init__(text, parent)
+        self.tooltip_text = tooltip_text
+        
+        self.tooltip = QLabel()
+        self.tooltip.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        self.tooltip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.tooltip.setStyleSheet("""
+            background-color: #24292f; 
+            color: #ffffff; 
+            padding: 6px 10px; 
+            border-radius: 6px; 
+            font-size: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        """)
+        self.tooltip.hide()
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.tooltip.setText(self.tooltip_text)
+        self.tooltip.adjustSize()
+        
+        btn_rect = self.rect()
+        global_pos = self.mapToGlobal(btn_rect.bottomLeft())
+        
+        x = global_pos.x() + (btn_rect.width() - self.tooltip.width()) // 2
+        y = global_pos.y() + 5
+        
+        self.tooltip.move(x, y)
+        self.tooltip.show()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.tooltip.hide()
+# ===========================================================================
+
 class SettingsCard(QFrame):
     def __init__(self, title: str):
         super().__init__()
@@ -184,10 +222,11 @@ class AdsTab(QWidget):
         # КАРТОЧКА 3: Товары и Автобиддер
         card_products = SettingsCard("Товары в кампании и ставки (Автобиддер)")
         self.products_table = QTableWidget()
-        self.products_table.setColumnCount(8)
+        self.products_table.setColumnCount(10)
+        # === ИЗМЕНЕН ПОРЯДОК КОЛОНОК ===
         self.products_table.setHorizontalHeaderLabels([
-            "Артикул (nm_id)", "Старая ставка (₽)", "Новая ставка (₽)", 
-            "Позиция (ср.)", "Макс. ставка (₽)", "Целевая позиция", "Ставка ночью (₽)", "Статус"
+            "Артикул (nm_id)", "Старая ставка (₽)", "Новая ставка (₽)", "Позиция (ср.)", 
+            "Макс. ставка (₽)", "Целевая позиция", "Шаг ↑ (%)", "Шаг ↓ (%)", "Ночная ставка (₽)", "Статус"
         ])
         self.products_table.verticalHeader().setVisible(False)
         self.products_table.setAlternatingRowColors(True)
@@ -200,37 +239,29 @@ class AdsTab(QWidget):
         p_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         p_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         p_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        p_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive) 
-        p_header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive) 
-        p_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive) 
-        p_header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
+        p_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive) # Макс. ставка
+        p_header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive) # Целевая позиция
+        p_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive) # Шаг вверх
+        p_header.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive) # Шаг вниз
+        p_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive) # Ночная ставка
+        p_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)      # Статус
         
-        self.products_table.setColumnWidth(4, 140)
-        self.products_table.setColumnWidth(5, 130)
-        self.products_table.setColumnWidth(6, 130)
+        self.products_table.setColumnWidth(4, 120)
+        self.products_table.setColumnWidth(5, 140)
+        self.products_table.setColumnWidth(6, 100)
+        self.products_table.setColumnWidth(7, 100)
+        self.products_table.setColumnWidth(8, 140)
         
         card_products.content_layout.addWidget(self.products_table)
 
-        # НАСТРОЙКИ ШАГОВ И НОЧНОГО РЕЖИМА
-        bidder_settings_1 = QHBoxLayout()
-        bidder_settings_1.setSpacing(15)
+        # НАСТРОЙКИ (НОЧНОЙ РЕЖИМ И КНОПКА СТАРТА)
+        bidder_settings = QHBoxLayout()
+        bidder_settings.setSpacing(15)
         
-        bidder_settings_1.addWidget(QLabel("Шаг ↑ (%):"))
-        self.step_up_spin = QDoubleSpinBox()
-        self.step_up_spin.setRange(1.0, 50.0)
-        self.step_up_spin.setValue(10.0)
-        bidder_settings_1.addWidget(self.step_up_spin)
+        bidder_settings.addStretch() # Отодвигаем все вправо
 
-        bidder_settings_1.addWidget(QLabel("Шаг ↓ (%):"))
-        self.step_down_spin = QDoubleSpinBox()
-        self.step_down_spin.setRange(1.0, 50.0)
-        self.step_down_spin.setValue(10.0)
-        bidder_settings_1.addWidget(self.step_down_spin)
-        
-        bidder_settings_1.addSpacing(20)
-
-        # НОЧНОЙ РЕЖИМ
-        self.night_mode_btn = QPushButton("🌙 Ночной режим: ВЫКЛ")
+        # НОЧНОЙ РЕЖИМ (Используем кастомную кнопку)
+        self.night_mode_btn = HoverButton("🌙 Ночной режим: ВЫКЛ", "с 00:00 до 06:00 утра")
         self.night_mode_btn.setCheckable(True)
         self.night_mode_btn.setStyleSheet("""
             QPushButton {
@@ -243,21 +274,16 @@ class AdsTab(QWidget):
             }
         """)
         self.night_mode_btn.toggled.connect(self.toggle_night_mode_ui)
-        bidder_settings_1.addWidget(self.night_mode_btn)
-        
-        night_hint = QLabel("(00:00 - 06:00)")
-        night_hint.setStyleSheet("color: #666; font-size: 12px;")
-        bidder_settings_1.addWidget(night_hint)
-        
-        bidder_settings_1.addStretch()
+        bidder_settings.addWidget(self.night_mode_btn)
 
+        # КНОПКА ЗАПУСКА
         self.start_bidder_btn = QPushButton("🚀 Запустить автобиддер")
         self.start_bidder_btn.setCheckable(True)
         self.start_bidder_btn.clicked.connect(self.toggle_bidder)
         self.start_bidder_btn.setStyleSheet("QPushButton { background-color: #ddf4ff; border: 1px solid #54aeff; color: #0969da; font-weight: bold; padding: 6px 14px; border-radius: 4px; } QPushButton:hover { background-color: #b6e3ff; }")
-        bidder_settings_1.addWidget(self.start_bidder_btn)
+        bidder_settings.addWidget(self.start_bidder_btn)
 
-        card_products.content_layout.addLayout(bidder_settings_1)
+        card_products.content_layout.addLayout(bidder_settings)
         layout.addWidget(card_products)
 
         # КАРТОЧКА 4: ЖУРНАЛ РАБОТЫ
@@ -304,8 +330,6 @@ class AdsTab(QWidget):
             return
             
         self.campaign_id = config.get("campaign_id")
-        self.step_up_spin.setValue(config.get("step_up", 10.0))
-        self.step_down_spin.setValue(config.get("step_down", 10.0))
         
         is_night_mode = config.get("enable_night_mode", False)
         self.night_mode_btn.setChecked(is_night_mode)
@@ -370,7 +394,9 @@ class AdsTab(QWidget):
             item_pos.setForeground(QColor("#1f2328"))
             self.products_table.setItem(i, 3, item_pos)
             
-            nm_sett = saved_settings.get(str(nm_id), {"max_bid": 30.0, "target_pos": 10, "night_bid": 10.0})
+            nm_sett = saved_settings.get(str(nm_id), {
+                "max_bid": 30.0, "target_pos": 10, "night_bid": 10.0, "step_up": 10.0, "step_down": 10.0
+            })
             
             max_bid_input = QDoubleSpinBox()
             max_bid_input.setRange(1.0, 1000.0)
@@ -385,18 +411,33 @@ class AdsTab(QWidget):
             target_pos_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
             target_pos_input.setStyleSheet("font-weight: bold;")
             self.products_table.setCellWidget(i, 5, target_pos_input)
+
+            # === СМЕНА ИНДЕКСОВ ДЛЯ ШАГОВ И НОЧНОЙ СТАВКИ ===
+            step_up_input = QDoubleSpinBox()
+            step_up_input.setRange(1.0, 50.0)
+            step_up_input.setValue(nm_sett.get("step_up", 10.0))
+            step_up_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            step_up_input.setStyleSheet("font-weight: bold;")
+            self.products_table.setCellWidget(i, 6, step_up_input) # Шаг вверх теперь 6
+            
+            step_down_input = QDoubleSpinBox()
+            step_down_input.setRange(1.0, 50.0)
+            step_down_input.setValue(nm_sett.get("step_down", 10.0))
+            step_down_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            step_down_input.setStyleSheet("font-weight: bold;")
+            self.products_table.setCellWidget(i, 7, step_down_input) # Шаг вниз теперь 7
             
             night_bid_input = QDoubleSpinBox()
             night_bid_input.setRange(1.0, 1000.0)
             night_bid_input.setValue(nm_sett.get("night_bid", 10.0))
             night_bid_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
             night_bid_input.setStyleSheet("font-weight: bold;")
-            self.products_table.setCellWidget(i, 6, night_bid_input)
+            self.products_table.setCellWidget(i, 8, night_bid_input) # Ночная ставка теперь 8
 
             item_status = QTableWidgetItem("Ожидание...")
             item_status.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item_status.setForeground(QColor("#666"))
-            self.products_table.setItem(i, 7, item_status)
+            self.products_table.setItem(i, 9, item_status)
         
         if not self.start_bidder_btn.isChecked():
             self.log_text.append(f"Загружено {len(products)} товаров. Настройте параметры и запускайте.")
@@ -440,7 +481,7 @@ class AdsTab(QWidget):
                 item_status.setForeground(QColor("#cf222e"))
             else:
                 item_status.setForeground(QColor("#1f2328"))
-            self.products_table.setItem(i, 7, item_status)
+            self.products_table.setItem(i, 9, item_status)
 
     def toggle_bidder(self):
         config = load_bidder_config()
@@ -456,13 +497,17 @@ class AdsTab(QWidget):
                 nm_item = self.products_table.item(i, 0)
                 max_bid_widget = self.products_table.cellWidget(i, 4)
                 target_pos_widget = self.products_table.cellWidget(i, 5)
-                night_bid_widget = self.products_table.cellWidget(i, 6)
+                step_up_widget = self.products_table.cellWidget(i, 6)    # Сдвинуто на 6
+                step_down_widget = self.products_table.cellWidget(i, 7)  # Сдвинуто на 7
+                night_bid_widget = self.products_table.cellWidget(i, 8)  # Сдвинуто на 8
                 
-                if nm_item and max_bid_widget and target_pos_widget and night_bid_widget:
+                if nm_item and max_bid_widget and target_pos_widget and night_bid_widget and step_up_widget and step_down_widget:
                     nm_id = nm_item.text()
                     product_settings[nm_id] = {
                         "max_bid": max_bid_widget.value(),
                         "target_pos": target_pos_widget.value(),
+                        "step_up": step_up_widget.value(),
+                        "step_down": step_down_widget.value(),
                         "night_bid": night_bid_widget.value()
                     }
                 
@@ -470,8 +515,6 @@ class AdsTab(QWidget):
                 "enabled": True,
                 "campaign_id": self.campaign_id,
                 "product_settings": product_settings,
-                "step_up": self.step_up_spin.value(),
-                "step_down": self.step_down_spin.value(),
                 "enable_night_mode": self.night_mode_btn.isChecked()
             })
             save_bidder_config(config)
@@ -482,11 +525,9 @@ class AdsTab(QWidget):
             self.bidder_worker = AdBidderWorker(
                 advert_id=self.campaign_id,
                 product_settings=product_settings,
-                step_up=self.step_up_spin.value(),
-                step_down=self.step_down_spin.value(),
                 interval_min=5,
                 enable_night_mode=self.night_mode_btn.isChecked(),
-                night_bid=10.0 # Глобальный резерв
+                night_bid=10.0
             )
             self.bidder_worker.log_signal.connect(self.log_text.append)
             self.bidder_worker.products_updated.connect(self.update_products_ui)

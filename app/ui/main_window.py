@@ -2,8 +2,7 @@ from app.ui.ads_tab import AdsTab
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import (
-    QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel, QDialog,
-    QSystemTrayIcon, QMenu, QApplication, QProgressBar
+    QMainWindow, QTabWidget, QWidget, QApplication, QSystemTrayIcon, QMenu
 )
 from pathlib import Path
 
@@ -32,44 +31,24 @@ class SyncThread(QThread):
             self.error.emit(str(e))
 
 
-class LoadingDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
-        self.setFixedSize(380, 110)
-        self.setStyleSheet("""
-            QDialog { background: #ffffff; border: 1px solid #d0d7de; border-radius: 10px; }
-        """)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(14)
-        label = QLabel("Загрузка данных из Wildberries...")
-        label.setStyleSheet("font-size: 13px; font-weight: bold; color: #1f2328;")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 0)
-        self.progress.setFixedHeight(6)
-        self.progress.setTextVisible(False)
-        self.progress.setStyleSheet("""
-            QProgressBar { border: none; background: #eaeef2; border-radius: 3px; }
-            QProgressBar::chunk { background: #0969da; border-radius: 3px; }
-        """)
-        layout.addWidget(label)
-        layout.addWidget(self.progress)
-    
-    def center_on_parent(self, parent):
-        if parent:
-            geo = parent.geometry()
-            x = geo.x() + (geo.width() - self.width()) // 2
-            y = geo.y() + (geo.height() - self.height()) // 2
-            self.move(x, y)
-
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Юнит-экономика Wildberries")
         self.resize(1650, 860)
+
+        # ================= ГЛОБАЛЬНЫЙ СТИЛЬ ДЛЯ ПОДСКАЗОК =================
+        QApplication.instance().setStyleSheet("""
+            QToolTip {
+                background-color: #24292f;
+                color: #ffffff;
+                border: 1px solid #57606a;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+                font-size: 12px;
+            }
+        """)
 
         icon_path = Path(__file__).parent.parent.parent / "wb_icon.png"
         if icon_path.exists():
@@ -121,7 +100,6 @@ class MainWindow(QMainWindow):
         self.tray_icon.show()
 
         # ================= ТАЙМЕР АВТОСИНХРОНИЗАЦИИ =================
-        # Каждые 30 минут программа будет сама скачивать данные с WB
         self.auto_sync_timer = QTimer(self)
         self.auto_sync_timer.timeout.connect(self.start_sync)
         self.auto_sync_timer.start(30 * 60 * 1000) # 30 минут
@@ -162,24 +140,13 @@ class MainWindow(QMainWindow):
         if not token:
             return
         
-        self.loading_dialog = LoadingDialog(self)
-        self.loading_dialog.center_on_parent(self)
-        
-        self._dialog_timer = QTimer()
-        self._dialog_timer.setSingleShot(True)
-        self._dialog_timer.timeout.connect(self.loading_dialog.show)
-        self._dialog_timer.start(300)
-        
         self.sync_thread = SyncThread(token)
         self.sync_thread.finished_ok.connect(self.on_sync_finished)
         self.sync_thread.error.connect(self.on_sync_error)
         self.sync_thread.start()
 
     def on_sync_finished(self):
-        self._dialog_timer.stop()
-        if hasattr(self, 'loading_dialog'):
-            self.loading_dialog.close()
-        
+        # Просто тихо обновляем данные на экране
         self.dashboard.refresh()
         if self.reports: self.reports.load_data()
         if self.costs: self.costs.load_data()
@@ -187,9 +154,8 @@ class MainWindow(QMainWindow):
         if self.ads: self.ads.load_from_db()
 
     def on_sync_error(self, err):
-        self._dialog_timer.stop()
-        if hasattr(self, 'loading_dialog'):
-            self.loading_dialog.close()
+        # Ошибки при фоновой синхронизации не мешают работе
+        pass
 
     def show_normal(self):
         self.show()

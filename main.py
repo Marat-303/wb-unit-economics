@@ -12,7 +12,7 @@ def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
 
-    # Глобальный стиль для календаря (фон, цвета выделения)
+    # Глобальный стиль для календаря
     app.setStyleSheet("""
         QCalendarWidget QWidget {
             alternate-background-color: #ffffff;
@@ -65,6 +65,7 @@ def main():
     window = MainWindow()
     window.show()
     
+    # Запускаем фоновую синхронизацию тихо, без окон
     window.start_sync()
     
     return app.exec()

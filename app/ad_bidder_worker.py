@@ -10,16 +10,14 @@ class AdBidderWorker(QThread):
     log_signal = pyqtSignal(str)
     products_updated = pyqtSignal(list)
 
-    def __init__(self, advert_id: int, product_settings: dict, step_up: float = 5.0, step_down: float = 3.0, 
-                 interval_min: int = 5, enable_night_mode: bool = False, night_bid: float = 10.0):
+    def __init__(self, advert_id: int, product_settings: dict, interval_min: int = 5, 
+                 enable_night_mode: bool = False, night_bid: float = 10.0):
         super().__init__()
         self.advert_id = advert_id
         self.product_settings = product_settings
-        self.step_up = step_up
-        self.step_down = step_down
         self.interval_sec = interval_min * 60
         self.enable_night_mode = enable_night_mode
-        self.night_bid = night_bid # Глобальный резерв, если в настройках товара нет ставки
+        self.night_bid = night_bid # Глобальный резерв
         self.running = True
 
     def run(self):
@@ -87,10 +85,16 @@ class AdBidderWorker(QThread):
             current_bid = p["current_bid_rub"]
             pos = positions.get(nm_id)
             
-            p_sett = self.product_settings.get(str(nm_id), {"max_bid": 30.0, "target_pos": 10, "night_bid": self.night_bid})
+            # Получаем индивидуальные настройки
+            p_sett = self.product_settings.get(str(nm_id), {
+                "max_bid": 30.0, "target_pos": 10, "night_bid": self.night_bid,
+                "step_up": 10.0, "step_down": 10.0
+            })
             p_max_bid = float(p_sett.get("max_bid", 30.0))
             p_target_pos = int(p_sett.get("target_pos", 10))
             p_night_bid = float(p_sett.get("night_bid", self.night_bid))
+            p_step_up = float(p_sett.get("step_up", 10.0))
+            p_step_down = float(p_sett.get("step_down", 10.0))
 
             status = "—"
             new_bid = current_bid
@@ -112,7 +116,7 @@ class AdBidderWorker(QThread):
                     status = "⚠️ Нет данных о позиции"
                 elif pos > p_target_pos:
                     if current_bid < p_max_bid:
-                        new_bid = min(current_bid * (1 + self.step_up / 100), p_max_bid)
+                        new_bid = min(current_bid * (1 + p_step_up / 100), p_max_bid)
                         if new_bid > current_bid:
                             status = f"⬆️ Повышение (Поз. {pos:.0f} > {p_target_pos})"
                             action = new_bid
@@ -122,7 +126,7 @@ class AdBidderWorker(QThread):
                         status = f"⚠️ Лимит {p_max_bid:.2f} ₽"
                 else:
                     if current_bid > 1.0:
-                        new_bid = max(current_bid * (1 - self.step_down / 100), 1.0)
+                        new_bid = max(current_bid * (1 - p_step_down / 100), 1.0)
                         if new_bid < current_bid:
                             status = f"⬇️ Снижение (Поз. {pos:.0f} < {p_target_pos})"
                             action = new_bid
