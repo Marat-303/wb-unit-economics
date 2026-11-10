@@ -33,36 +33,27 @@ class SyncThread(QThread):
 
 
 class LoadingDialog(QDialog):
-    """Маленькое аккуратное окно загрузки поверх главного окна."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setFixedSize(380, 110)
         self.setStyleSheet("""
-            QDialog { 
-                background: #ffffff; 
-                border: 1px solid #d0d7de; 
-                border-radius: 10px; 
-            }
+            QDialog { background: #ffffff; border: 1px solid #d0d7de; border-radius: 10px; }
         """)
-        
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(14)
-        
         label = QLabel("Загрузка данных из Wildberries...")
         label.setStyleSheet("font-size: 13px; font-weight: bold; color: #1f2328;")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
         self.progress = QProgressBar()
-        self.progress.setRange(0, 0) # Бесконечный режим
+        self.progress.setRange(0, 0)
         self.progress.setFixedHeight(6)
         self.progress.setTextVisible(False)
         self.progress.setStyleSheet("""
             QProgressBar { border: none; background: #eaeef2; border-radius: 3px; }
             QProgressBar::chunk { background: #0969da; border-radius: 3px; }
         """)
-        
         layout.addWidget(label)
         layout.addWidget(self.progress)
     
@@ -87,12 +78,9 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
 
-        # ================= ЛЕНИВАЯ ЗАГРУЗКА ВКЛАДОК =================
-        # Сразу создаем только Дашборд (самый быстрый)
         self.dashboard = DashboardTab()
         self.tabs.addTab(self.dashboard, "Дашборд")
         
-        # Для остальных вкладок создаем заглушки
         self._placeholders = {}
         self.reports = None
         self.costs = None
@@ -100,7 +88,6 @@ class MainWindow(QMainWindow):
         self.ads = None
         self.settings = None
         
-        # Название вкладки теперь с пробелами
         for name in ["Статистика", "Товары", "Отчёты", "Продвижение | Кампании", "Настройки"]:
             ph = QWidget()
             self._placeholders[name] = ph
@@ -122,8 +109,9 @@ class MainWindow(QMainWindow):
 
         show_action = QAction("Показать", self)
         show_action.triggered.connect(self.show_normal)
+        
         quit_action = QAction("Выход", self)
-        quit_action.triggered.connect(QApplication.instance().quit)
+        quit_action.triggered.connect(self.quit_app)
 
         tray_menu = QMenu()
         tray_menu.addAction(show_action)
@@ -132,11 +120,16 @@ class MainWindow(QMainWindow):
         self.tray_icon.activated.connect(self._on_tray_activated)
         self.tray_icon.show()
 
+        # ================= ТАЙМЕР АВТОСИНХРОНИЗАЦИИ =================
+        # Каждые 30 минут программа будет сама скачивать данные с WB
+        self.auto_sync_timer = QTimer(self)
+        self.auto_sync_timer.timeout.connect(self.start_sync)
+        self.auto_sync_timer.start(30 * 60 * 1000) # 30 минут
+
     def _on_tab_changed(self, index: int) -> None:
         name = self.tabs.tabText(index)
         widget = self.tabs.widget(index)
         
-        # Если это заглушка — создаем реальную вкладку (ленивая загрузка)
         if name in self._placeholders and widget is self._placeholders[name]:
             if name == "Отчёты":
                 self.reports = ReportsTab()
@@ -159,29 +152,24 @@ class MainWindow(QMainWindow):
             self.tabs.setCurrentIndex(index)
             return
         
-        # Обновление данных при переключении
         if widget is self.dashboard:
             self.dashboard.refresh()
         elif widget is self.stats:
             self.stats.refresh()
 
     def start_sync(self):
-        """Запускает фоновую синхронизацию с окном загрузки."""
         token = load_token()
         if not token:
             return
         
-        # Создаем окно загрузки
         self.loading_dialog = LoadingDialog(self)
         self.loading_dialog.center_on_parent(self)
         
-        # Показываем окно только если синхронизация длится дольше 300 мс
         self._dialog_timer = QTimer()
         self._dialog_timer.setSingleShot(True)
         self._dialog_timer.timeout.connect(self.loading_dialog.show)
         self._dialog_timer.start(300)
         
-        # Запускаем поток
         self.sync_thread = SyncThread(token)
         self.sync_thread.finished_ok.connect(self.on_sync_finished)
         self.sync_thread.error.connect(self.on_sync_error)
@@ -189,9 +177,9 @@ class MainWindow(QMainWindow):
 
     def on_sync_finished(self):
         self._dialog_timer.stop()
-        self.loading_dialog.close()
+        if hasattr(self, 'loading_dialog'):
+            self.loading_dialog.close()
         
-        # Обновляем все созданные вкладки
         self.dashboard.refresh()
         if self.reports: self.reports.load_data()
         if self.costs: self.costs.load_data()
@@ -200,7 +188,8 @@ class MainWindow(QMainWindow):
 
     def on_sync_error(self, err):
         self._dialog_timer.stop()
-        self.loading_dialog.close()
+        if hasattr(self, 'loading_dialog'):
+            self.loading_dialog.close()
 
     def show_normal(self):
         self.show()
@@ -214,9 +203,22 @@ class MainWindow(QMainWindow):
         if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
             self.show_normal()
 
-    def closeEvent(self, event):
-        # Останавливаем фоновый поток рекламы, не блокируя интерфейс надолго
+    def quit_app(self):
         if self.ads:
             self.ads.stop()
-        # Принимаем событие закрытия
-        event.accept()
+        QApplication.instance().quit()
+
+    def closeEvent(self, event):
+        if self.tray_icon.isVisible():
+            self.hide()
+            self.tray_icon.showMessage(
+                "Юнит-экономика WB",
+                "Программа свернута в трей. Автобиддер и ночной режим продолжают работать.",
+                QSystemTrayIcon.MessageIcon.Information,
+                2000
+            )
+            event.ignore()
+        else:
+            if self.ads:
+                self.ads.stop()
+            event.accept()

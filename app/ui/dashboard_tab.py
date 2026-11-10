@@ -1,7 +1,7 @@
 from datetime import date
 import math
 import calendar
-from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtCore import Qt, QDate, QTimer
 from PyQt6.QtGui import QColor, QFont, QFontMetrics
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -123,6 +123,8 @@ class DashboardTab(QWidget):
         super().__init__()
         layout = QVBoxLayout(self)
 
+        self.last_known_date = QDate.currentDate()
+
         top = QHBoxLayout()
         top.addWidget(QLabel("С:"))
         self.date_from = CustomDateEdit()
@@ -193,7 +195,6 @@ class DashboardTab(QWidget):
         top.addStretch()
         layout.addLayout(top)
 
-        # ИНИЦИАЛИЗИРУЕМ СЕТКУ МЕСЯЦЕВ СРАЗУ (чтобы избежать вылетов)
         self.month_selector = MonthSelector(self)
         self.month_selector.month_selected.connect(self.on_month_selected)
 
@@ -288,6 +289,28 @@ class DashboardTab(QWidget):
 
         self.refresh()
 
+        # ================= ТАЙМЕР АВТООБНОВЛЕНИЯ ДАШБОРДА =================
+        # Каждые 15 минут проверяем, не сменился ли день, и обновляем данные
+        self.auto_refresh_timer = QTimer(self)
+        self.auto_refresh_timer.timeout.connect(self.auto_refresh_check)
+        self.auto_refresh_timer.start(15 * 60 * 1000)
+
+    def auto_refresh_check(self):
+        current_date = QDate.currentDate()
+        
+        # Если наступил новый день (например, программа работала всю ночь)
+        if current_date != self.last_known_date:
+            self.last_known_date = current_date
+            
+            # Если пользователь смотрел на "Вчера" (даты одинаковые), то сдвигаем их на новое "Вчера"
+            if self.month_btn.text() == "Выбрать месяц" and self.date_from.date() == self.date_to.date():
+                yesterday = current_date.addDays(-1)
+                self.date_from.setDate(yesterday)
+                self.date_to.setDate(yesterday)
+        
+        # В любом случае обновляем данные на экране
+        self.refresh()
+
     def show_month_selector(self):
         self.month_selector.show_at(self.month_btn)
 
@@ -364,12 +387,10 @@ class DashboardTab(QWidget):
             QMessageBox.warning(self, "Ошибка дат", "Дата начала не может быть позже даты окончания.")
             return
 
-        # ================= ИЗМЕНЕНИЕ ЗДЕСЬ =================
         if self.month_btn.text() == "Выбрать месяц" and qdate_from.daysTo(qdate_to) <= 6:
             self.card_net_profit.hide()
         else:
             self.card_net_profit.show()
-        # ==================================================
 
         try:
             data = calculate_unit_economics(date_from, date_to)
@@ -401,7 +422,6 @@ class DashboardTab(QWidget):
             avg_net_val = net_profit / num_days
             avg_net = f"{avg_net_val:,.2f}".replace(",", " ")
             
-            # === РАСЧЕТ ПРОГНОЗА НА МЕСЯЦ ===
             days_in_month = calendar.monthrange(qdate_to.year(), qdate_to.month())[1]
             forecast_net_val = avg_net_val * days_in_month
             forecast_net_str = f"{forecast_net_val:,.2f}".replace(",", " ")
@@ -409,7 +429,6 @@ class DashboardTab(QWidget):
             sub_ads = f"Среднее в день: <span style='color:#cf222e; font-weight: bold;'>{avg_ads} ₽</span>"
             sub_profit = f"Среднее в день: <span style='color:{profit_color}; font-weight: bold;'>{avg_profit} ₽</span>"
             
-            # Формируем двойную подпись для чистой прибыли
             sub_net = f"Среднее в день: <span style='color:{net_profit_color}; font-weight: bold;'>{avg_net} ₽</span>"
             sub_net += f"<br>Прогноз на месяц: <span style='color:#0969da; font-weight: bold;'>{forecast_net_str} ₽</span>"
         else:
