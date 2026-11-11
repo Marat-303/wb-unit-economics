@@ -67,14 +67,19 @@ class AdBudgetWorker(QThread):
                     self.log_signal.emit(f"🛑 Кампания {camp_id} остановлена (Расход: {current_spend:.2f} > Лимит: {limit})")
                     set_paused_date(camp_id, today_str)
                     self.refresh_ui_signal.emit(stats)
+                else:
+                    self.log_signal.emit(f"⚠️ Не удалось остановить кампанию {camp_id} (ошибка API)")
             
             # 2. Наступил НОВЫЙ ДЕНЬ, а кампания была на паузе
             elif last_paused and last_paused != today_str:
-                # Пытаемся запустить. Если пользователь уже запустил вручную — API просто вернет ошибку, нам все равно
-                api.start_campaign(camp_id)
-                self.log_signal.emit(f"▶️ Новый день! Кампания {camp_id} снята с паузы.")
-                set_paused_date(camp_id, "") # Очищаем дату паузы
-                self.refresh_ui_signal.emit(stats)
+                # Пытаемся запустить и ПРОВЕРЯЕМ результат
+                success = api.start_campaign(camp_id)
+                if success:
+                    self.log_signal.emit(f"▶️ Новый день! Кампания {camp_id} успешно снята с паузы.")
+                    set_paused_date(camp_id, "") # Очищаем дату паузы только при успехе
+                    self.refresh_ui_signal.emit(stats)
+                else:
+                    self.log_signal.emit(f"⚠️ Не удалось запустить кампанию {camp_id} в новый день. Попробуем позже...")
                 
             # 3. Расход в норме, но мы ее останавливали сегодня (например, подняли лимит)
             elif current_spend <= limit and last_paused == today_str:
