@@ -8,7 +8,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor, QFont
 import datetime
-from app.ad_budget_db import get_all_limits, update_limit, delete_limit
+# ДОБАВИЛИ set_paused_date
+from app.ad_budget_db import get_all_limits, update_limit, delete_limit, set_paused_date
 from app.secure_token import load_token
 from app.wb_ad_api import WBAdAPI
 from app.ad_budget_worker import AdBudgetWorker
@@ -223,7 +224,6 @@ class AdsTab(QWidget):
         card_products = SettingsCard("Товары в кампании и ставки (Автобиддер)")
         self.products_table = QTableWidget()
         self.products_table.setColumnCount(10)
-        # === ИЗМЕНЕН ПОРЯДОК КОЛОНОК ===
         self.products_table.setHorizontalHeaderLabels([
             "Артикул (nm_id)", "Старая ставка (₽)", "Новая ставка (₽)", "Позиция (ср.)", 
             "Макс. ставка (₽)", "Целевая позиция", "Шаг ↑ (%)", "Шаг ↓ (%)", "Ночная ставка (₽)", "Статус"
@@ -239,12 +239,12 @@ class AdsTab(QWidget):
         p_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         p_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         p_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        p_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive) # Макс. ставка
-        p_header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive) # Целевая позиция
-        p_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive) # Шаг вверх
-        p_header.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive) # Шаг вниз
-        p_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive) # Ночная ставка
-        p_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)      # Статус
+        p_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive) 
+        p_header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive) 
+        p_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive) 
+        p_header.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive) 
+        p_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive) 
+        p_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
         
         self.products_table.setColumnWidth(4, 120)
         self.products_table.setColumnWidth(5, 140)
@@ -260,7 +260,7 @@ class AdsTab(QWidget):
         
         bidder_settings.addStretch() # Отодвигаем все вправо
 
-        # НОЧНОЙ РЕЖИМ (Используем кастомную кнопку)
+        # НОЧНОЙ РЕЖИМ
         self.night_mode_btn = HoverButton("🌙 Ночной режим: ВЫКЛ", "с 00:00 до 06:00 утра")
         self.night_mode_btn.setCheckable(True)
         self.night_mode_btn.setStyleSheet("""
@@ -411,28 +411,27 @@ class AdsTab(QWidget):
             target_pos_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
             target_pos_input.setStyleSheet("font-weight: bold;")
             self.products_table.setCellWidget(i, 5, target_pos_input)
-
-            # === СМЕНА ИНДЕКСОВ ДЛЯ ШАГОВ И НОЧНОЙ СТАВКИ ===
+            
             step_up_input = QDoubleSpinBox()
             step_up_input.setRange(1.0, 50.0)
             step_up_input.setValue(nm_sett.get("step_up", 10.0))
             step_up_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
             step_up_input.setStyleSheet("font-weight: bold;")
-            self.products_table.setCellWidget(i, 6, step_up_input) # Шаг вверх теперь 6
+            self.products_table.setCellWidget(i, 6, step_up_input)
             
             step_down_input = QDoubleSpinBox()
             step_down_input.setRange(1.0, 50.0)
             step_down_input.setValue(nm_sett.get("step_down", 10.0))
             step_down_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
             step_down_input.setStyleSheet("font-weight: bold;")
-            self.products_table.setCellWidget(i, 7, step_down_input) # Шаг вниз теперь 7
+            self.products_table.setCellWidget(i, 7, step_down_input)
             
             night_bid_input = QDoubleSpinBox()
             night_bid_input.setRange(1.0, 1000.0)
             night_bid_input.setValue(nm_sett.get("night_bid", 10.0))
             night_bid_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
             night_bid_input.setStyleSheet("font-weight: bold;")
-            self.products_table.setCellWidget(i, 8, night_bid_input) # Ночная ставка теперь 8
+            self.products_table.setCellWidget(i, 8, night_bid_input)
 
             item_status = QTableWidgetItem("Ожидание...")
             item_status.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -497,9 +496,9 @@ class AdsTab(QWidget):
                 nm_item = self.products_table.item(i, 0)
                 max_bid_widget = self.products_table.cellWidget(i, 4)
                 target_pos_widget = self.products_table.cellWidget(i, 5)
-                step_up_widget = self.products_table.cellWidget(i, 6)    # Сдвинуто на 6
-                step_down_widget = self.products_table.cellWidget(i, 7)  # Сдвинуто на 7
-                night_bid_widget = self.products_table.cellWidget(i, 8)  # Сдвинуто на 8
+                step_up_widget = self.products_table.cellWidget(i, 6)
+                step_down_widget = self.products_table.cellWidget(i, 7)
+                night_bid_widget = self.products_table.cellWidget(i, 8)
                 
                 if nm_item and max_bid_widget and target_pos_widget and night_bid_widget and step_up_widget and step_down_widget:
                     nm_id = nm_item.text()
@@ -632,7 +631,16 @@ class AdsTab(QWidget):
             local_ids = {row[0] for row in get_all_limits()}
             for camp in campaigns:
                 camp_id = camp.get("advertId")
+                status = camp.get("status")
+                
+                # Если WB говорит, что кампания активна, сбрасываем паузу в нашей БД
+                if status == 9:
+                    set_paused_date(camp_id, "")
+                    
                 if camp_id and camp_id not in local_ids:
+                    update_limit(camp_id, camp.get("name", "Без названия"), 0, True)
+                elif camp_id:
+                    # Обновляем статус для уже существующих
                     update_limit(camp_id, camp.get("name", "Без названия"), 0, True)
             
             self.load_from_db()

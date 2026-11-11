@@ -14,13 +14,10 @@ class AdBudgetWorker(QThread):
         self.running = True
 
     def run(self):
-        # Обновили текст на 5 мин
         self.log_signal.emit("Фоновый контроль бюджета запущен (интервал: 5 мин).")
         
         while self.running:
             self._check_budgets()
-            
-            # Ждем 5 минут (300 секунд)
             for _ in range(300):
                 if not self.running:
                     break
@@ -56,13 +53,14 @@ class AdBudgetWorker(QThread):
             camp_id = row[0]
             limit = row[2]
             auto_pause = row[3]
-            last_paused = row[4]
+            last_paused = row[4] or "" # Если None, делаем пустую строку
             
             current_spend = stats.get(camp_id, 0)
 
             if not auto_pause or limit <= 0:
                 continue
 
+            # 1. Превышен лимит — ставим на паузу (если еще не ставили сегодня)
             if current_spend > limit and last_paused != today_str:
                 success = api.pause_campaign(camp_id)
                 if success:
@@ -70,6 +68,15 @@ class AdBudgetWorker(QThread):
                     set_paused_date(camp_id, today_str)
                     self.refresh_ui_signal.emit(stats)
             
+            # 2. Наступил НОВЫЙ ДЕНЬ, а кампания была на паузе
+            elif last_paused and last_paused != today_str:
+                # Пытаемся запустить. Если пользователь уже запустил вручную — API просто вернет ошибку, нам все равно
+                api.start_campaign(camp_id)
+                self.log_signal.emit(f"▶️ Новый день! Кампания {camp_id} снята с паузы.")
+                set_paused_date(camp_id, "") # Очищаем дату паузы
+                self.refresh_ui_signal.emit(stats)
+                
+            # 3. Расход в норме, но мы ее останавливали сегодня (например, подняли лимит)
             elif current_spend <= limit and last_paused == today_str:
                 success = api.start_campaign(camp_id)
                 if success:
