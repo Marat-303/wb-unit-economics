@@ -182,7 +182,8 @@ class AdsTab(QWidget):
         card_table = SettingsCard("Рекламный бюджет")
         self.table = QTableWidget()
         self.table.setColumnCount(8)
-        self.table.setHorizontalHeaderLabels(["ID", "Название", "Расход (₽)", "Лимит (₽/день)", "Автопауза", "Статус", "Обновлено", ""])
+        # === ИСПРАВЛЕНЫ ЗАГОЛОВКИ: УБРАН РУБЛЬ И ДОБАВЛЕНЫ СКОБКИ ===
+        self.table.setHorizontalHeaderLabels(["ID", "Название", "Расход (в день)", "Лимит (в день)", "Автопауза", "Статус", "Обновлено", ""])
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
@@ -225,7 +226,7 @@ class AdsTab(QWidget):
         self.products_table.setColumnCount(10)
         self.products_table.setHorizontalHeaderLabels([
             "Артикул (nm_id)", "Старая ставка (₽)", "Новая ставка (₽)", "Позиция (ср.)", 
-            "Макс. ставка (₽)", "Целевая позиция", "Шаг ↑ (%)", "Шаг ↓ (%)", "Ночная ставка (₽)", "Статус"
+            "Макс. ставка (₽)", "Целевая позиция", "Шаг ↑", "Шаг ↓", "Ночная ставка (₽)", "Статус"
         ])
         self.products_table.verticalHeader().setVisible(False)
         self.products_table.setAlternatingRowColors(True)
@@ -247,8 +248,8 @@ class AdsTab(QWidget):
         
         self.products_table.setColumnWidth(4, 120)
         self.products_table.setColumnWidth(5, 140)
-        self.products_table.setColumnWidth(6, 100)
-        self.products_table.setColumnWidth(7, 100)
+        self.products_table.setColumnWidth(6, 90)
+        self.products_table.setColumnWidth(7, 90)
         self.products_table.setColumnWidth(8, 140)
         
         card_products.content_layout.addWidget(self.products_table)
@@ -411,8 +412,10 @@ class AdsTab(QWidget):
             target_pos_input.setStyleSheet("font-weight: bold;")
             self.products_table.setCellWidget(i, 5, target_pos_input)
             
+            # === ДОБАВЛЕН ЗНАК % В ПОЛЕ ВВОДА ШАГОВ ===
             step_up_input = QDoubleSpinBox()
             step_up_input.setRange(1.0, 50.0)
+            step_up_input.setSuffix(" %") 
             step_up_input.setValue(nm_sett.get("step_up", 10.0))
             step_up_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
             step_up_input.setStyleSheet("font-weight: bold;")
@@ -420,6 +423,7 @@ class AdsTab(QWidget):
             
             step_down_input = QDoubleSpinBox()
             step_down_input.setRange(1.0, 50.0)
+            step_down_input.setSuffix(" %")
             step_down_input.setValue(nm_sett.get("step_down", 10.0))
             step_down_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
             step_down_input.setStyleSheet("font-weight: bold;")
@@ -441,7 +445,6 @@ class AdsTab(QWidget):
             self.log_text.append(f"Загружено {len(products)} товаров. Настройте параметры и запускайте.")
 
     def update_products_ui(self, products: list):
-        # === ИСПРАВЛЕНИЕ: Обновляем строго по nm_id, а не по порядку ===
         row_map = {}
         for i in range(self.products_table.rowCount()):
             item = self.products_table.item(i, 0)
