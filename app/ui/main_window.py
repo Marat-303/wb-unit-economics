@@ -67,7 +67,7 @@ class MainWindow(QMainWindow):
         self.ads = None
         self.settings = None
         
-        for name in ["Статистика", "Товары", "Отчёты", "Продвижение | Кампании", "Настройки"]:
+        for name in ["Статистика", "Товары | Цены", "Загрузка данных", "Продвижение | Кампании", "Настройки"]:
             ph = QWidget()
             self._placeholders[name] = ph
             self.tabs.addTab(ph, name)
@@ -109,10 +109,10 @@ class MainWindow(QMainWindow):
         widget = self.tabs.widget(index)
         
         if name in self._placeholders and widget is self._placeholders[name]:
-            if name == "Отчёты":
+            if name == "Загрузка данных":
                 self.reports = ReportsTab()
                 actual = self.reports
-            elif name == "Товары":
+            elif name == "Товары | Цены":
                 self.costs = CostsTab()
                 actual = self.costs
             elif name == "Статистика":
@@ -146,7 +146,6 @@ class MainWindow(QMainWindow):
         self.sync_thread.start()
 
     def on_sync_finished(self):
-        # Просто тихо обновляем данные на экране
         self.dashboard.refresh()
         if self.reports: self.reports.load_data()
         if self.costs: self.costs.load_data()
@@ -154,7 +153,6 @@ class MainWindow(QMainWindow):
         if self.ads: self.ads.load_from_db()
 
     def on_sync_error(self, err):
-        # Ошибки при фоновой синхронизации не мешают работе
         pass
 
     def show_normal(self):
@@ -172,19 +170,13 @@ class MainWindow(QMainWindow):
     def quit_app(self):
         if self.ads:
             self.ads.stop()
+        self.tray_icon.hide()
         QApplication.instance().quit()
 
     def closeEvent(self, event):
-        if self.tray_icon.isVisible():
-            self.hide()
-            self.tray_icon.showMessage(
-                "Юнит-экономика WB",
-                "Программа свернута в трей. Автобиддер и ночной режим продолжают работать.",
-                QSystemTrayIcon.MessageIcon.Information,
-                2000
-            )
-            event.ignore()
-        else:
-            if self.ads:
-                self.ads.stop()
-            event.accept()
+        # ПОЛНОЕ ЗАКРЫТИЕ ПРИ КЛИКЕ НА КРЕСТИК
+        if self.ads:
+            self.ads.stop()
+        self.tray_icon.hide()
+        QApplication.instance().quit()
+        event.accept()

@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor, QFont
 import datetime
-# ДОБАВИЛИ set_paused_date
 from app.ad_budget_db import get_all_limits, update_limit, delete_limit, set_paused_date
 from app.secure_token import load_token
 from app.wb_ad_api import WBAdAPI
@@ -442,9 +441,19 @@ class AdsTab(QWidget):
             self.log_text.append(f"Загружено {len(products)} товаров. Настройте параметры и запускайте.")
 
     def update_products_ui(self, products: list):
-        for i, p in enumerate(products):
-            if i >= self.products_table.rowCount(): break
-            nm_id = p["nm_id"]
+        # === ИСПРАВЛЕНИЕ: Обновляем строго по nm_id, а не по порядку ===
+        row_map = {}
+        for i in range(self.products_table.rowCount()):
+            item = self.products_table.item(i, 0)
+            if item:
+                row_map[item.text()] = i
+                
+        for p in products:
+            nm_id_str = str(p["nm_id"])
+            if nm_id_str not in row_map:
+                continue
+                
+            i = row_map[nm_id_str]
             
             old_bid = p.get('old_bid_rub', p.get('current_bid_rub', 0))
             item_old = QTableWidgetItem(f"{old_bid:.2f}")
@@ -633,14 +642,12 @@ class AdsTab(QWidget):
                 camp_id = camp.get("advertId")
                 status = camp.get("status")
                 
-                # Если WB говорит, что кампания активна, сбрасываем паузу в нашей БД
                 if status == 9:
                     set_paused_date(camp_id, "")
                     
                 if camp_id and camp_id not in local_ids:
                     update_limit(camp_id, camp.get("name", "Без названия"), 0, True)
                 elif camp_id:
-                    # Обновляем статус для уже существующих
                     update_limit(camp_id, camp.get("name", "Без названия"), 0, True)
             
             self.load_from_db()
