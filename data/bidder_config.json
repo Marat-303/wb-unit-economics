@@ -12,14 +12,14 @@
         "252963550": {
             "max_bid": 27.0,
             "target_pos": 5,
-            "step_up": 10.0,
+            "step_up": 50.0,
             "step_down": 10.0,
             "night_bid": 10.0
         },
         "252964181": {
             "max_bid": 5.0,
             "target_pos": 20,
-            "step_up": 10.0,
+            "step_up": 50.0,
             "step_down": 10.0,
             "night_bid": 5.0
         }
